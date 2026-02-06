@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Will You Be My Valentine?</title>
+    <style>
+        body {
+            margin: 0;
+            height: 100vh;
+            background: linear-gradient(135deg, #ff758c, #ff7eb3);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Segoe UI', sans-serif;
+            color: #fff;
+            overflow: hidden;
+        }
+
+        .card {
+            background: rgba(255, 255, 255, 0.18);
+            border-radius: 22px;
+            padding: 40px;
+            text-align: center;
+            box-shadow: 0 15px 45px rgba(0,0,0,0.25);
+            backdrop-filter: blur(12px);
+            max-width: 430px;
+            position: relative;
+        }
+
+        h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .flowers {
+            font-size: 2em;
+            margin-bottom: 15px;
+        }
+
+        p {
+            font-size: 1.15em;
+            margin-bottom: 22px;
+        }
+
+        .info-box {
+            background: rgba(255,255,255,0.25);
+            border-radius: 15px;
+            padding: 15px;
+            margin-bottom: 25px;
+            font-size: 1.15em;
+        }
+
+        button {
+            padding: 12px 30px;
+            font-size: 1.1em;
+            border: none;
+            border-radius: 30px;
+            cursor: pointer;
+            margin: 10px;
+            transition: transform 0.2s ease;
+        }
+
+        .yes {
+            background: #fff;
+            color: #ff4f7a;
+        }
+
+        .yes:hover {
+            transform: scale(1.1);
+        }
+
+        .no {
+            background: transparent;
+            color: #fff;
+            border: 2px solid #fff;
+            position: absolute;
+        }
+
+        .heart, .flower {
+            position: absolute;
+            bottom: -20px;
+            font-size: 22px;
+            animation: floatUp 7s infinite ease-in;
+            opacity: 0.75;
+        }
+
+        @keyframes floatUp {
+            0% { transform: translateY(0); opacity: 0; }
+            10% { opacity: 1; }
+            100% { transform: translateY(-120vh); opacity: 0; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="card">
+        <div class="flowers">🌹🌸🌷🌺🌼</div>
+        <h1>Eliana 💖</h1>
+
+        <p>
+            Valentine’s Day would mean everything<br>
+            if I get to spend it with you.
+        </p>
+
+        <div class="info-box">
+            💐 Valentine’s Meet-Up 💐<br>
+            📍 <strong>Victoria</strong><br>
+            ⏰ <strong>14 February – 10:00 AM</strong>
+        </div>
+
+        <h2>Will you be my Valentine? 💘</h2>
+
+        <button class="yes" onclick="sayYes()">Yes 💕</button>
+        <button class="no" id="noBtn">No 🙃</button>
+    </div>
+
+    <script>
+        function sayYes() {
+            document.body.innerHTML = `
+                <div style="
+                    display:flex;
+                    flex-direction:column;
+                    justify-content:center;
+                    align-items:center;
+                    height:100vh;
+                    color:white;
+                    text-align:center;
+                    font-family:'Segoe UI', sans-serif;
+                ">
+                    <h1>It’s a date 🌹❤️</h1>
+                    <p style="font-size:1.3em;">
+                        I’ll see you in <strong>Victoria</strong><br>
+                        on Valentine’s Day at <strong>10:00 AM</strong> 💐
+                    </p>
+                </div>
+            `;
+        }
+
+        const noBtn = document.getElementById("noBtn");
+
+        noBtn.addEventListener("mouseover", () => {
+            const x = Math.random() * (window.innerWidth - noBtn.offsetWidth);
+            const y = Math.random() * (window.innerHeight - noBtn.offsetHeight);
+            noBtn.style.left = x + "px";
+            noBtn.style.top = y + "px";
+        });
+
+        function createFloating(type) {
+            const el = document.createElement("div");
+            el.classList.add(type);
+            el.innerHTML = type === "heart" ? "❤️" : "🌸";
+            el.style.left = Math.random() * 100 + "vw";
+            el.style.animationDuration = (Math.random() * 3 + 4) + "s";
+            document.body.appendChild(el);
+            setTimeout(() => el.remove(), 8000);
+        }
+
+        setInterval(() => createFloating("heart"), 500);
+        setInterval(() => createFloating("flower"), 900);
+    </script>
+
+</body>
+</html>
